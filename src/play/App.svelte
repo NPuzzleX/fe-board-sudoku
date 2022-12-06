@@ -154,6 +154,8 @@
       posX = -1;
       posY = -1;
     }
+
+    isScrolled = false;
   }
 
   function pointerDown(e: PointerEvent) {
