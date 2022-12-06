@@ -1,0 +1,30 @@
+on:
+  push:
+    branches: ["prod"]
+    
+jobs:
+ build:
+  runs-on: ubuntu-latest
+  steps:
+    - name: Checkout master
+      uses: actions/checkout@main
+    - name: Install doctl
+      uses: digitalocean/action-doctl@v2
+      with:
+        token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+    - name: Update deployment file process.env.BASE_URL
+      run: sed -i 's|process.env.BASE_URL|\"'${{ secrets.BASE_URL }}'\"|' $GITHUB_WORKSPACE/src/helper/backend.ts        
+    - name: Build container image
+      run: docker build -t registry.digitalocean.com/npuzzle/main:fe-b-sudoku-$(echo $GITHUB_SHA | head -c7) .
+    - name: Log in to DigitalOcean Container Registry with short-lived credentials
+      run: doctl registry login --expiry-seconds 1200
+    - name: Push image to DigitalOcean Container Registry
+      run: docker push registry.digitalocean.com/npuzzle/main:fe-b-sudoku-$(echo $GITHUB_SHA | head -c7)
+    - name: Update deployment file
+      run: TAG=$(echo $GITHUB_SHA | head -c7) && sed -i 's|<IMAGE>|registry.digitalocean.com/npuzzle/main:fe-b-sudoku-'${TAG}'|' $GITHUB_WORKSPACE/k8s/auto-deployment.yml
+    - name: Save DigitalOcean kubeconfig with short-lived credentials
+      run: doctl kubernetes cluster kubeconfig save --expiry-seconds 600 ${{ secrets.DO_CLUSTER_NAME }}
+    - name: Deploy to DigitalOcean Kubernetes
+      run: kubectl apply -f $GITHUB_WORKSPACE/k8s/auto-deployment.yml
+    - name: Verify deployment
+      run: kubectl rollout status deployment/npuzzle-fe-b-sudoku
